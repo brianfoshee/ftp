@@ -238,46 +238,51 @@ func (c *ServerConn) openDataConn() (net.Conn, error) {
 // cmd is a helper function to execute a command and check for the expected FTP
 // return code
 func (c *ServerConn) cmd(expected int, format string, args ...interface{}) (int, string, error) {
-	_, err := c.conn.Cmd(format, args...)
+	id, err := c.conn.Cmd(format, args...)
 	if err != nil {
 		return 0, "", err
 	}
+
+	c.conn.StartResponse(id)
+	defer c.conn.EndResponse(id)
 
 	return c.conn.ReadResponse(expected)
 }
 
 // cmdDataConnFrom executes a command which require a FTP data connection.
 // Issues a REST FTP command to specify the number of bytes to skip for the transfer.
-func (c *ServerConn) cmdDataConnFrom(offset uint64, format string, args ...interface{}) (net.Conn, error) {
+func (c *ServerConn) cmdDataConnFrom(offset uint64, format string, args ...interface{}) (uint, net.Conn, error) {
 	conn, err := c.openDataConn()
 	if err != nil {
-		return nil, err
+		return 0, nil, err
 	}
 
 	if offset != 0 {
 		_, _, err := c.cmd(StatusRequestFilePending, "REST %d", offset)
 		if err != nil {
-			return nil, err
+			return 0, nil, err
 		}
 	}
 
-	_, err = c.conn.Cmd(format, args...)
+	id, err := c.conn.Cmd(format, args...)
 	if err != nil {
 		conn.Close()
-		return nil, err
+		return 0, nil, err
 	}
+
+	c.conn.StartResponse(id)
 
 	code, msg, err := c.conn.ReadResponse(-1)
 	if err != nil {
 		conn.Close()
-		return nil, err
+		return 0, nil, err
 	}
 	if code != StatusAlreadyOpen && code != StatusAboutToSend {
 		conn.Close()
-		return nil, &textproto.Error{Code: code, Msg: msg}
+		return 0, nil, &textproto.Error{Code: code, Msg: msg}
 	}
 
-	return conn, nil
+	return id, conn, nil
 }
 
 var errUnsupportedListLine = errors.New("Unsupported LIST line")
@@ -477,10 +482,11 @@ func (e *Entry) setTime(fields []string) (err error) {
 
 // NameList issues an NLST FTP command.
 func (c *ServerConn) NameList(path string) (entries []string, err error) {
-	conn, err := c.cmdDataConnFrom(0, "NLST %s", path)
+	id, conn, err := c.cmdDataConnFrom(0, "NLST %s", path)
 	if err != nil {
 		return
 	}
+	defer c.conn.EndResponse(id)
 
 	r := &response{conn, c}
 	defer r.Close()
@@ -497,10 +503,11 @@ func (c *ServerConn) NameList(path string) (entries []string, err error) {
 
 // List issues a LIST FTP command.
 func (c *ServerConn) List(path string) (entries []*Entry, err error) {
-	conn, err := c.cmdDataConnFrom(0, "LIST %s", path)
+	id, conn, err := c.cmdDataConnFrom(0, "LIST %s", path)
 	if err != nil {
 		return
 	}
+	defer c.conn.EndResponse(id)
 
 	r := &response{conn, c}
 	defer r.Close()
@@ -565,10 +572,11 @@ func (c *ServerConn) Retr(path string) (io.ReadCloser, error) {
 //
 // The returned ReadCloser must be closed to cleanup the FTP data connection.
 func (c *ServerConn) RetrFrom(path string, offset uint64) (io.ReadCloser, error) {
-	conn, err := c.cmdDataConnFrom(offset, "RETR %s", path)
+	id, conn, err := c.cmdDataConnFrom(offset, "RETR %s", path)
 	if err != nil {
 		return nil, err
 	}
+	defer c.conn.EndResponse(id)
 
 	return &response{conn, c}, nil
 }
@@ -587,7 +595,7 @@ func (c *ServerConn) Stor(path string, r io.Reader) error {
 //
 // Hint: io.Pipe() can be used if an io.Writer is required.
 func (c *ServerConn) StorFrom(path string, r io.Reader, offset uint64) error {
-	conn, err := c.cmdDataConnFrom(offset, "STOR %s", path)
+	id, conn, err := c.cmdDataConnFrom(offset, "STOR %s", path)
 	if err != nil {
 		return err
 	}
@@ -599,6 +607,8 @@ func (c *ServerConn) StorFrom(path string, r io.Reader, offset uint64) error {
 	}
 
 	_, _, err = c.conn.ReadResponse(StatusClosingDataConnection)
+
+	c.conn.EndResponse(id)
 	return err
 }
 
