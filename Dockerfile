@@ -11,31 +11,25 @@ RUN go get github.com/mattn/goveralls
 
 RUN apt-get update && apt-get install -y --no-install-recommends vsftpd && apt-get clean
 
-RUN { \
-  echo "local_enable=YES" ; \
-  echo "anon_root=/var/ftp"; \
-  echo "anon_upload_enable=YES"; \
-  echo "anonymous_enable=YES"; \
-  echo "dirmessage_enable=YES"; \
-  echo "anon_umask=022"; \
-  echo "anon_mkdir_write_enable=YES"; \
-  echo "anon_other_write_enable=YES"; \
-  echo "secure_chroot_dir=/var/run/vsftpd/empty"; \
-  echo "listen_ipv6=YES"; \
-  echo "chroot_local_user=YES"; \
-  echo "allow_writeable_chroot=YES"; \
-  echo "write_enable=YES"; \
-  echo "background=YES"; \
-  echo "local_umask=022"; \
-} > /etc/vsftpd.conf
-
-RUN { \
-  echo "#!/bin/sh"; \
-  echo "vsftpd /etc/vsftpd.conf"; \
-  echo "goveralls"; \
-} > test.sh
-
-RUN chmod +x test.sh
+RUN echo "local_enable=YES" >> /etc/vsftpd.conf && \
+  echo "anon_root=/var/ftp" >> /etc/vsftpd.conf && \
+  echo "anon_upload_enable=YES" >> /etc/vsftpd.conf && \
+  echo "anonymous_enable=YES" >> /etc/vsftpd.conf && \
+  echo "dirmessage_enable=YES" >> /etc/vsftpd.conf && \
+  echo "anon_umask=022" >> /etc/vsftpd.conf && \
+  echo "anon_mkdir_write_enable=YES" >> /etc/vsftpd.conf && \
+  echo "anon_other_write_enable=YES" >> /etc/vsftpd.conf && \
+  echo "secure_chroot_dir=/var/run/vsftpd/empty" >> /etc/vsftpd.conf && \
+  echo "listen_ipv6=YES" >> /etc/vsftpd.conf && \
+  echo "chroot_local_user=YES" >> /etc/vsftpd.conf && \
+  echo "allow_writeable_chroot=YES" >> /etc/vsftpd.conf && \
+  echo "write_enable=YES" >> /etc/vsftpd.conf && \
+  echo "background=YES" >> /etc/vsftpd.conf && \
+  echo "local_umask=022" >> /etc/vsftpd.conf && \
+  echo "#!/bin/sh" >> test.sh && \
+  echo "vsftpd /etc/vsftpd.conf" >> test.sh && \
+  echo "go test" >> test.sh && \
+  chmod +x test.sh
 
 EXPOSE 21
 
